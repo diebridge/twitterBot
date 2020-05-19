@@ -12,10 +12,11 @@ import datetime
 with open(Path(__file__).parent/'files/keywords.csv', 'r') as f:
     kws = [kw.strip('\n') for kw in f.readlines()]
 
+#* Some requests were rejected by twitter. So, collect them and send again.
 rejected_kws = []
 
 async def get_session():
-    """Generate a new session to send request.
+    """Generate a new session to send query.
 
     Returns:
         [api] -- [Request Class with url, headers, params]
@@ -99,6 +100,12 @@ async def handle_rejected_kws(collected_responses):
     return collected_responses
 
 async def parse_chunks():
+    """Every session could be used only 180 times.
+    So split the keywords list into n * 180 chunks.
+
+    Returns:
+        List -- List of dict.
+    """
     results = []
     kw_chunks = list(chunks(kws, 180))
     # semaphore = asyncio.Semaphore(2)
