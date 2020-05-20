@@ -8,6 +8,7 @@ from pathlib import Path
 import aiohttp
 import urllib
 import datetime
+import config
 
 with open(Path(__file__).parent/'files/keywords.csv', 'r') as f:
     kws = [kw.strip('\n') for kw in f.readlines()]
@@ -26,29 +27,28 @@ async def get_session():
     api = ApiRequestGetter.ApiRequestGetters_list[-1]
     return api
 
-async def async_get_response(url, method, q, payload=None, headers=None):
-    # await semaphore.acquire()
-    if payload is None:
-        payload = {}
-    if headers is None:
-        headers = {}
-    the_day_before_yesterday = datetime.date.today()-datetime.timedelta(days=2)
-    the_day_before_yesterday = the_day_before_yesterday.strftime('%Y-%m-%d')
-    q_ = '\"'+q+'\" since:{}'.format(the_day_before_yesterday)
-    url = url.replace('q=%22iphone%2011%22',f'q={urllib.parse.quote(q_)}').replace('count=20', 'count=100')
-    async with aiohttp.request(method, url, headers=headers, data=payload) as response:
-        if response.status == 200:
-            logging.info(f'Get response with {q}')
-            response = await response.json()
-            # semaphore.release()
-            if q in rejected_kws:
-                rejected_kws.remove(q)
-            return response
-        else:
-            logging.warning(f'No response from  {q} and added to rejected_kws')
-            rejected_kws.append(q)
-            # semaphore.release()
-            return None
+async def async_get_response(url, method, q, sem, payload=None, headers=None):
+    async with sem:
+        if payload is None:
+            payload = {}
+        if headers is None:
+            headers = {}
+        the_day_before_yesterday = datetime.date.today()-datetime.timedelta(days=2)
+        the_day_before_yesterday = the_day_before_yesterday.strftime('%Y-%m-%d')
+        q_ = '\"'+q+'\" since:{}'.format(the_day_before_yesterday)
+        url = url.replace('q=%22iphone%2011%22',f'q={urllib.parse.quote(q_)}').replace('count=20', 'count=100')
+        async with aiohttp.request(method, url, headers=headers, data=payload) as response:
+            if response.status == 200:
+                logging.info(f'Get response with {q}')
+                response = await response.json()
+                # semaphore.release()
+                if q in rejected_kws:
+                    rejected_kws.remove(q)
+                return response
+            else:
+                logging.warning(f'No response from  {q} and added to rejected_kws')
+                rejected_kws.append(q)
+                return None
 
         
 def _refine_json(results):
@@ -101,19 +101,20 @@ async def handle_rejected_kws(collected_responses):
 
 async def parse_chunks():
     """Every session could be used only 180 times.
-    So split the keywords list into n * 180 chunks.
+    So, split the keywords list into n * 180 chunks.
 
     Returns:
         List -- List of dict.
     """
     results = []
     kw_chunks = list(chunks(kws, 180))
-    # semaphore = asyncio.Semaphore(2)
+    semaphore = asyncio.Semaphore(config.CONCURRENT_REQUESTS)
     for kw_chunk in kw_chunks:
         api = await get_session()
         tasks = [async_get_response(api.api_url,
                                     api.method,
                                     kw,
+                                    semaphore,
                                     api.post_data,
                                     api.headers) for kw in kw_chunk]
         responses = await asyncio.gather(*tasks)
