@@ -27,3 +27,8 @@ Run commands under /twitterBot:
 
 ### Output
 Output will be located in twitterBot/twitter_results.json
+
+
+### Annotations
+
+This project is only a learning and practice project, and all the consequences have nothing to do with the author.
